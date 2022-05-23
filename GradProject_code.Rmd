@@ -1,0 +1,525 @@
+---
+title: |
+  | \Large \bf {Income Inequality Among Foreign-Borns in the United States}
+subtitle: |
+  | \vspace{0.3cm} \textsc{Homayoon Fotros}
+  |
+  | \textmd{Graduate Student Project}
+  | \vspace{0.2cm} \normalsize \textmd{Spring 2022}
+output: pdf_document
+geometry: "left = 2.5cm, right = 2cm, top = 2cm, bottom = 2cm"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Background and Motivation
+
+High income inequality is widely recognized as an underlying factor for many social and economic issues in the United States. One of the root causes of this inequality refers to income disparities between the foreign-born and native (born in the U.S. or in an American family while abroad) populations. While the United States is known as 'the land of opportunities' and *the* destination for many who seek a better life, research shows a significant gap between the average income level of foreign-borns and others.
+
+This report highlights the income disparity between foreign-borns and natives by focusing on the geographical distribution of low-income people in various states. According to the U.S. Department of Education, the term 'low-income' is attributed to individuals whose family's taxable income in the preceding year falls below 150 percent of the poverty line. The U.S. Census provides expanded data sets that categorize people into various ratios of poverty line and based on their demographic information. While the U.S. Census reports and previous work in this area have discussed variations among low-income people according to their race, age, and education among other key demographics, the differences between foreign-born and native people have not received sufficient attention. The present report is a brief contribution to address this gap.
+
+## Data and Method
+
+The American Community Survey (ACS) 5-Year data is published every year by the U.S. Census and contains valuable information regarding a broad range of topics about key socioeconomic characteristics of the U.S. population. This report uses the data from the latest version of ACS 5-year survey that was published in March 2022. The data is extracted by the official Census API via `tidycensus` library in `R`. The population estimates are retrieved at the national, state, and county levels. I calculate the low-income percentage in each geographic division based on the number of total population of that specific group in the same division. For example, the percentage of low-income foreign-born population in California is calculated by dividing the population of foreign-born people in California with income under 150% of poverty level to the total population of foreign-born in California. The same method is applied for this indicator at the county level. Finally, to present the visualizations for geographic distribution of population indicators, I employ the `usmap` library that provides a plot method using the geographic codes (*fips*) of the Census data.
+
+## Analysis
+
+Table-1 shows a 4 percentage difference between the low-income foreign-born and native populations. This is expected considering the economic status of most newcomers to the United States, especially those arriving from Central America and refugees from around the world. However, using the country as the unit of analysis is inconclusive because the distribution of low-income people has notable variations between and within the states. 
+
+```{r DataGather, echo=F, warning=F, message=F}
+
+library (tidyverse)
+library (rio)
+library(tidycensus)
+library(forcats)
+library(gridExtra)
+library(usmap)
+library(viridis)
+
+#census_api_key("02745862f1621074623398281b76ff99c0349dd7")
+
+dt <- data.frame(State = NULL, County = NULL, Status = NULL, Year = NULL,
+                 FIPS =  NULL, Under_100 = NULL , Under_150 = NULL,At150_Above = NULL,
+                  Total = NULL)
+
+county_dat <- function(stt, y = 2020) {
+  
+  s <- stt
+
+  ## Retrieving County data, Foreign-Born population
+  
+  pvtXX_tot <- get_acs(geography = "county",
+              variables = c("B06012_017E"), state=s, year=y)
+  pvtXX_100 <- get_acs(geography = "county",
+              variables = c("B06012_018E"), state=s, year=y)
+  pvtXX_150 <- get_acs(geography = "county",
+              variables = c("B06012_019E"), state=s, year=y)
+  pvtXX_ab150 <- get_acs(geography = "county",
+              variables = c("B06012_020E"),state=s, year=y)
+  pvtXX_st <- data.frame(State = s,
+                    County = pvtXX_100$NAME,
+                    FIPS = pvtXX_tot$GEOID,
+                     Year = y,
+                    Status = 'Foreign-Born',
+                     Under_100 = pvtXX_100$estimate,
+                     At100_150 = pvtXX_150$estimate,
+                     At150_Above = pvtXX_ab150$estimate,
+                     Total = pvtXX_100$estimate + pvtXX_150$estimate +
+                       pvtXX_ab150$estimate)
+  
+  ntvXX_st <- pvtXX_st 
+  
+  pvtXX_st %>% 
+      mutate(Under_100 = round(Under_100 / Total,2),
+         At100_150 = round(At100_150 / Total,2),
+         Under_150 = round(Under_100 + At100_150,2),
+         At150_Above = round(At150_Above/Total,2)) %>% 
+      select(State, County, Status, Year, FIPS, Under_100, Under_150, At150_Above, Total)  %>% 
+      drop_na(.)-> pvtXX_st
+  
+  Sys.sleep(2)
+  
+  frnXX_st <- pvtXX_st
+  
+  ## Retrieving US County data, Native Population
+  
+  pvtXX_tot <- get_acs(geography = "county",
+              variables = c("B06012_001E"), state=s, year=y)
+  pvtXX_100 <- get_acs(geography = "county",
+              variables = c("B06012_002E"), state=s, year=y)
+  pvtXX_150 <- get_acs(geography = "county",
+              variables = c("B06012_003E"), state=s, year=y)
+  pvtXX_ab150 <- get_acs(geography = "county",
+              variables = c("B06012_004E"),state=s, year=y)
+  pvtXX_st <- data.frame(State = s,
+                    County = pvtXX_100$NAME,
+                    FIPS = pvtXX_tot$GEOID,
+                     Year = y,
+                    Status = 'Native',
+                     Under_100 = pvtXX_100$estimate,
+                     At100_150 = pvtXX_150$estimate,
+                     At150_Above = pvtXX_ab150$estimate,
+                     Total = pvtXX_100$estimate + pvtXX_150$estimate +
+                       pvtXX_ab150$estimate)
+  
+  pvtXX_st[,6:9] <- pvtXX_st[,6:9] - ntvXX_st[,6:9]
+  
+  pvtXX_st %>% 
+      mutate(Under_100 = round(Under_100 / Total,2),
+         At100_150 = round(At100_150 / Total,2),
+         Under_150 = round(Under_100 + At100_150,2),
+         At150_Above = round(At150_Above/Total,2)) %>% 
+      select(State, County, Status, Year, FIPS, Under_100, Under_150, At150_Above, Total)  %>% 
+      drop_na(.)-> pvtXX_st
+  Sys.sleep(2)
+  pvtXX_st <- rbind(pvtXX_st, frnXX_st)
+  return(pvtXX_st)
+}
+
+all_stt_names <- get_acs(geography = "state",
+                         variables = c("B06012_001E"),year=2020) %>%
+                  select(NAME) %>% .[1:51,]
+          
+#cat('Fetching Data from Census (This can take a while!)...\n')
+#for (st_n in all_stt_names$NAME){
+#  dt <- rbind(dt, county_dat(st_n,y = 2020))
+#  cat('=')
+#}
+#print('=>Done!')
+#nrow(dt)
+
+#export(dt, 'msdt.csv')
+dt <- import('msdt.csv')
+#dt_bck <- dt
+```
+
+
+```{r TABLE-1, echo=F, warning=F, message=F}
+#dt <- import('msdt.csv')
+#colnames(dt)
+dt %>% 
+  mutate (pop_under_150 = Under_150 * Total) %>% 
+  group_by(Status) %>% 
+  summarise(Status=unique(Status),Total = sum(Total),
+            Under_150 = round(sum(pop_under_150)/Total,2)) -> disp_tbl
+
+
+knitr::kable(disp_tbl, format.args = list(big.mark=','),
+             col.names = c('Status      ','Population     ',
+                           'Proportion of Low-Income Popultion '),
+             caption = '*Proportion of Population by Status - United States, 2020*',
+                )
+```
+
+\newpage
+
+```{r byState, warning=F, message=F, echo=F, out.height='65%', out.width='65%', fig.align='center', fig.cap='\\textit{Ratio of Low-income Population in States. \\\\ Bars in red and blue are Foreign-Borns and Natives respectively.}'}
+
+tbl_s <- dt %>%
+          mutate (pop_under_150 = Under_150 * Total) %>% 
+          group_by(State, Status) %>% 
+          summarize(Total = sum(Total), Under_150 = round(sum(pop_under_150)/Total,2))
+
+high_pov <- tbl_s %>% 
+              filter(Status=='Foreign-Born') %>% 
+                arrange(desc(Under_150)) %>% head(10) %>% 
+                  .$State
+
+low_pov <- tbl_s %>% 
+              filter(Status=='Foreign-Born') %>% 
+                arrange(Under_150) %>% head(10) %>% 
+                  .$State
+p1<- tbl_s %>%
+  filter (State %in% high_pov) %>% 
+  ggplot() +
+  geom_col(aes(x=fct_reorder(State, Under_150,.fun = 'max'),
+               y=Under_150, fill=factor(Status)),width = 0.5, position = 'dodge') +
+  coord_flip() +
+  scale_y_continuous(limit = c(0, 0.6), expand = c(0,0))+ 
+  theme_bw() + theme(axis.text.y = element_text(size = 7)) +
+  labs(x='',y='', title = 'Highest Ratios') + theme(legend.position = 'none')
+
+p2<- tbl_s %>%
+  filter (State %in% low_pov) %>%
+  ggplot() +
+  geom_col(aes(x=fct_reorder2(State,factor(Status, levels=c('Native','Foreign-Born'), ordered = T), Under_150 ), 
+               y=Under_150, fill=factor(Status)), width = 0.5, position = 'dodge') +
+  coord_flip() +
+  scale_y_continuous(limit = c(0, 0.6), expand = c(0,0))+
+  theme_bw() + theme(axis.text.y = element_text(size = 7)) +
+  labs(x='',y='', title='Lowest Ratios')  + theme(legend.position = c(0.8, 0.90)) + 
+  theme(legend.title = element_blank()) + 
+  theme(legend.text = element_text(size=5),
+  legend.background = element_rect(colour = NA, fill = NA))
+
+
+#p_tst <- ggplot_gtable(ggplot_build(p1))
+#p_tst <- p_tst$grobs
+#p_tst <- p_tst[[which(sapply(p_tst, function(x) x$name) == 'guide-box')]]
+
+grid.arrange(p1,p2 , ncol=2)
+```
+
+Figure-1 shows in states like New Mexico, Louisiana, and Mississippi the ratio of low-income population is above 30 percent. Notice that Nebraska has the 8th highest ratio of low-income ratio in foreign-borns with 30 percent, while this ratio is below 20 percent for the native population. For the states in the right panel, the low-income ratios for foreign-born and native people are similar, except for District of Columbia that the ratio of low-incomes are higher among natives than foreign-borns. The variation of low-income ratios for foreign-born people are further evident in Figure-2. Notice that the ratio is considerably lower in states in the north-east region (Virginia, Maryland, etc.,) while it is higher in the South (New Mexico, Texas, etc.).
+
+```{r USmap,echo=F, warning=F, message=F, out.height='68%', out.width='68%', fig.align='center', fig.cap='\\textit{Low-income ratio among Foreign-Born Population}'}
+
+tbl_s %>% 
+  filter(Status == 'Foreign-Born') %>% 
+  mutate(state = State) %>% 
+plot_usmap(data = . ,values = "Under_150", color = "white") + 
+  scale_fill_viridis(option="rocket", direction = -1, name = "") +
+  #scale_fill_continuous(
+  #  low = "yellow", high = "black", name = "", label = scales::comma) +
+  theme_minimal() + 
+  theme(axis.line = element_blank(), axis.text = element_blank(),
+        axis.ticks = element_blank(), axis.title = element_blank()) +
+  theme(legend.position = "right") 
+
+
+```
+\newpage
+
+```{r TopCounties, echo=F, warning=F, message=F}
+dt %>% 
+  select(County, Under_150, Total) %>% 
+  filter(Total >=1000) %>% 
+  arrange(desc(Under_150), desc(Total)) %>% 
+  head(5) %>% data.frame(., row.names = NULL) -> tbl_2
+
+knitr::kable(tbl_2, format.args = list(big.mark=','),
+             col.names = c('County    ','Proportion of Low-Income Popultion ',
+                           'Population  '),
+             caption = '*Highest Low-Income Ratio among Foreign-borns\\break Counties with more than 1000 Foreign-born Population*')
+
+dt %>% 
+  select(County, Under_150, Total) %>% 
+  filter(Total >=1000) %>%
+  arrange(Under_150, Total) %>% 
+  head(5) %>% data.frame(., row.names = NULL) -> tbl_3
+
+knitr::kable(tbl_3, format.args = list(big.mark=','),
+             col.names = c('County    ','Proportion of Low-Income Popultion ',
+                           'Population  '),
+             caption = '*Lowest Low-Income Ratio among Foreign-borns \\break Counties with more than 1000 Foreign-born Population*')
+```
+
+The ratio of low-income foreign-born population has notable variations within each state. Table-2 and Table-3 shows the 5 counties (more than 1000 population) with highest and lowest values of this index. Notice that only 5 percent of more than 301,000 foreign-born people in Loudoun County, Virginia are low-incomes. In contrast, 71 percent of almost 10,000 foreign-borns in Todd County, South Dakota are low-incomes. This observation is interesting because neither of these two state are among those illustrated in Figure-1, which is further evidence of significant variations of the  low-income ratio between the United States' counties.
+
+The distribution of low-income ratios for foreign-born population is displayed in Figure-3. This skewed distribution has an extended tail, showing that there are counties with high levels of low-income ratios, while the majority of counties have values close to the average. On the other hand, the distribution for native population is close to normal, and unlike the foreign-borns, there is no county with a low-income ratio greater than 70 percent.    
+
+```{r CountyHist, echo=F, warning=F, message=F, , out.height='70%', out.width='70%', fig.align='center', fig.cap='\\textit{Distribution of Low-income Population Ratios by Counties}'}
+
+px<- dt %>% 
+  filter(Status =='Foreign-Born') %>% 
+  ggplot() +
+  geom_histogram(aes(Under_150), col='white', fill='firebrick', binwidth = 0.02) +
+  geom_vline(aes(xintercept=0.29), col = 'black', linetype=2) +
+  scale_x_continuous(limit = c(0, 1), expand = c(0,0))+
+  theme_bw() + theme(axis.text.y = element_text(size = 7)) +
+  labs(x='Foreign-Born',y='') + theme(legend.position='none')
+py<- dt %>% 
+  filter(Status =='Native') %>% 
+  ggplot() +
+  geom_histogram(aes(Under_150), col='white', fill='steelblue', binwidth = 0.02) +
+  geom_vline(aes(xintercept=0.24), col = 'black', linetype=2) +
+  scale_x_continuous(limit = c(0, 1), expand = c(0,0))+
+  theme_bw() + theme(axis.text.y = element_text(size = 7)) +
+  labs(x='Native',y='') + theme(legend.position='none')
+grid.arrange(px, py, ncol=2)
+
+```
+
+```{r SummaryStat, echo=F, warning=F, message=F}
+data.frame(rbind(summary(dt[dt$Status=='Foreign-Born','Under_150']),
+      summary(dt[dt$Status=='Native','Under_150']))) %>% 
+  cbind(SD = tapply(dt$Under_150, dt$Status, sd)) %>% 
+  knitr::kable(digits = 2, col.names= c('Min', '1st. Quart.', 'Median', 'Mean',
+                                        '3rd. Quart', 'Max', 'Standard Dev.'),
+                 caption = '*Summary Statistics - Low-Income Ratios, U.S. Counties*')
+```
+
+Table-4 shows the standard variation of low-income ratios among foreign-born population is twice higher than this index among native people. Here, we might take another look into the within-state variation of the index. Figure-4 illustrates the low-income ratio for foreign-born population in the 4 states that exemplify high and low average of this index. Specifically, while New Mexico has the worst average index among all the states, there are counties in this state with very low level of low-income ratio among foreign born people. A same case also applies to Louisiana. Conversely, while Virginia and Washington State are among the top states with low level of low-income average ratio, several counties in these two states have very high low-income index for foreign-born population.
+$\\$
+$\\$
+Figure-5  illustrates the changes of low-income ratio in states over the past decade. The data shows the average ratio has been constantly higher among foreign-born people than native people. More importantly, the figures highlights that the low-income ratio among both foreign-borns and natives have improved since 2010. 
+
+```{r County-View, echo=F, fig.align='center', fig.cap='\\textit{Low-income Ratios in Selected States by County\\\\\ Counties with a darker hue one the map have higher ratios of low-income foreign-born population.}' }
+
+### Selected States, County View
+
+count_plt <- function(stt) {
+  dt %>% 
+    filter(State == stt, Status=='Foreign-Born') %>% 
+    mutate(state = State,
+          st_fp=ifelse(FIPS<10000,
+                       str_c('0',substr(FIPS, 1,1)),substr(FIPS, 1,2)),
+         fips = FIPS) -> tmp_dat
+  
+  plt<- plot_usmap(data = tmp_dat , regions = 'counties',
+           include = c(tmp_dat$st_fp,tmp_dat$fips),
+             values = "Under_150", color = "white") + 
+  scale_fill_viridis(option="rocket", direction = -1, name = "", limits=c(0,1)) +
+  theme_minimal() + labs(title = stt) +
+  theme(axis.line = element_blank(), axis.text = element_blank(),
+        axis.ticks = element_blank(), axis.title = element_blank()) +
+  theme(legend.position = "none")
+  
+  return(plt)
+  
+}
+
+st_ls <- c('New Mexico', 'Louisiana', 'Washington','Virginia')
+st_plots <- lapply(st_ls, count_plt)
+grid.arrange(grobs = st_plots, nrow=2)
+```
+
+\newpage
+
+```{r echo=F, warning=F, message=F, out.height='70%',out.width='70%', fig.align='center', fig.cap='\\textit{Variation of Low-income Ratios in States by Year (2010, 2015, and 2020)}'}
+
+## Analyzing the trend from 2010 to 2020
+
+state_year <- function(y) {
+
+  ## Retrieving State data, Foreign-Born population
+  
+  pvtXX_tot <- get_acs(geography = "state",
+              variables = c("B06012_017E"), year=y)
+  pvtXX_100 <- get_acs(geography = "state",
+              variables = c("B06012_018E"), year=y)
+  pvtXX_150 <- get_acs(geography = "state",
+              variables = c("B06012_019E"), year=y)
+  pvtXX_ab150 <- get_acs(geography = "state",
+              variables = c("B06012_020E"), year=y)
+  pvtXX_st <- data.frame(State = pvtXX_100$NAME,
+                    FIPS = pvtXX_tot$GEOID,
+                     Year = y,
+                    Status = 'Foreign-Born',
+                     Under_100 = pvtXX_100$estimate,
+                     At100_150 = pvtXX_150$estimate,
+                     At150_Above = pvtXX_ab150$estimate,
+                     Total = pvtXX_100$estimate + pvtXX_150$estimate +
+                       pvtXX_ab150$estimate)
+  
+  ntvXX_st <- pvtXX_st 
+  
+  pvtXX_st %>% 
+      mutate(Under_100 = round(Under_100 / Total,2),
+         At100_150 = round(At100_150 / Total,2),
+         Under_150 = round(Under_100 + At100_150,2),
+         At150_Above = round(At150_Above/Total,2)) %>% 
+      select(State,Status, Year, FIPS, Under_100, Under_150, At150_Above, Total)  %>% 
+      drop_na(.)-> pvtXX_st
+  
+  Sys.sleep(2)
+  
+  frnXX_st <- pvtXX_st
+  
+  ## Retrieving State data, Native Population
+  
+  pvtXX_tot <- get_acs(geography = "state",
+              variables = c("B06012_001E"), year=y)
+  pvtXX_100 <- get_acs(geography = "state",
+              variables = c("B06012_002E"), year=y)
+  pvtXX_150 <- get_acs(geography = "state",
+              variables = c("B06012_003E"), year=y)
+  pvtXX_ab150 <- get_acs(geography = "state",
+              variables = c("B06012_004E"), year=y)
+  pvtXX_st <- data.frame(State = pvtXX_100$NAME,
+                    FIPS = pvtXX_tot$GEOID,
+                     Year = y,
+                    Status = 'Native',
+                     Under_100 = pvtXX_100$estimate,
+                     At100_150 = pvtXX_150$estimate,
+                     At150_Above = pvtXX_ab150$estimate,
+                     Total = pvtXX_100$estimate + pvtXX_150$estimate +
+                       pvtXX_ab150$estimate)
+  
+  pvtXX_st[,5:8] <- pvtXX_st[,5:8] - ntvXX_st[,5:8]
+  
+  pvtXX_st %>% 
+      mutate(Under_100 = round(Under_100 / Total,2),
+         At100_150 = round(At100_150 / Total,2),
+         Under_150 = round(Under_100 + At100_150,2),
+         At150_Above = round(At150_Above/Total,2)) %>% 
+      select(State, Status, Year, FIPS, Under_100, Under_150, At150_Above, Total)  %>% 
+      drop_na(.)-> pvtXX_st
+  
+  Sys.sleep(2)
+  pvtXX_st <- rbind(pvtXX_st, frnXX_st)
+  return(pvtXX_st)
+}
+pvt_accu <- state_year(2020)
+pvt_accu <- rbind(pvt_accu, state_year(2015))
+pvt_accu <- rbind(pvt_accu, state_year(2010))
+
+pvt_accu %>% 
+  ggplot() +
+  geom_boxplot(aes(x=factor(Year), y=Under_150, fill=factor(Status))) + theme_bw() +
+  labs(y='Low-Income Ratio',x='',title='Low-Income Ratio in Foreign-born & Native Populations by State') +
+  theme(legend.position = 'bottom', legend.title = element_blank())
+
+```
+
+Finally, while it is beyond the scope of the present analysis, several reasons can be identified that contribute to the chronic low-income ratios among the foreign-born population in the United States. One key area is education, which is recognized as a key element in determining people's income growth and economic status. Figure-6 plots the low-income ratio versus the ratio of people with high-school degree or less than high-school education by counties in the United States. As the figure shows, there is a positive correlation between these two indicies, highlighting that counties with higher percentage of low-income foreign borns also tend to have a higher ratio of people who does not have some college education or above. In sum, it appears that higher education can help mitigate the issue of wide-spread poverty among low-income foreign born population. 
+
+```{r Edu-dat, message=F, warning=F, echo=F, out.height='65%', out.width='65%', fig.align='center', fig.cap='\\textit{The relationship between low-income ratio and Education among Foreign-born population}'}
+edu_dt <- data.frame(State = NULL, County = NULL, Status = NULL, Year = NULL,
+                 FIPS =  NULL, Less_HS = NULL , HS_Deg = NULL, Above_HS=NULL,
+                 Total = NULL)
+
+edu_dat <- function(stt, y = 2020) {
+
+  s <- stt
+## Retrieving US County Education data, Foreign-Born Population
+  
+  pvtXX_tot <- get_acs(geography = "county",
+              variables = c("B06009_025E"), state=s, year=y)
+  pvtXX_ls <- get_acs(geography = "county",
+              variables = c("B06009_026E"), state=s, year=y)
+  pvtXX_hs <- get_acs(geography = "county",
+              variables = c("B06009_027E"), state=s, year=y)
+  pvtXX_st <- data.frame(State = s,
+                    County = pvtXX_ls$NAME,
+                    FIPS = pvtXX_tot$GEOID,
+                     Year = y,
+                    Status = 'Foreign-Born',
+                     Less_HS = pvtXX_ls$estimate,
+                     HS_Deg = pvtXX_hs$estimate,
+                     Total = pvtXX_tot$estimate)
+  
+  ntvXX_st <- pvtXX_st
+  
+  pvtXX_st %>% 
+      mutate(Less_HS = round(Less_HS / Total,2),
+         HS_Deg = round(HS_Deg / Total,2),
+         Above_HS = round(1-HS_Deg-Less_HS,2)) %>% 
+      select(State, County, Status, Year, FIPS, Less_HS, HS_Deg, Above_HS, Total)  %>% 
+      drop_na(.)-> pvtXX_st
+  
+  Sys.sleep(2)
+  
+  frnXX_st <- pvtXX_st
+  
+## Retrieving County Education data, Native population
+  
+  pvtXX_tot <- get_acs(geography = "county",
+              variables = c("B06009_001E"), state=s, year=y)
+  pvtXX_ls <- get_acs(geography = "county",
+              variables = c("B06009_002E"), state=s, year=y)
+  pvtXX_hs <- get_acs(geography = "county",
+              variables = c("B06009_003E"), state=s, year=y)
+  pvtXX_st <- data.frame(State = s,
+                    County = pvtXX_ls$NAME,
+                    FIPS = pvtXX_tot$GEOID,
+                     Year = y,
+                    Status = 'Native',
+                     Less_HS = pvtXX_ls$estimate,
+                     HS_Deg = pvtXX_hs$estimate,
+                     Total = pvtXX_tot$estimate)
+  
+  pvtXX_st[,6:8] <- pvtXX_st[,6:8] - ntvXX_st[,6:8]
+  
+  pvtXX_st %>% 
+      mutate(Less_HS = round(Less_HS / Total,2),
+         HS_Deg = round(HS_Deg / Total,2),
+         Above_HS = round(1-HS_Deg-Less_HS,2)) %>% 
+      select(State, County, Status, Year, FIPS, Less_HS, HS_Deg, Above_HS, Total)  %>% 
+      drop_na(.)-> pvtXX_st
+  
+  Sys.sleep(2)
+  
+  pvtXX_st <- rbind(pvtXX_st, frnXX_st)
+  
+  return(pvtXX_st)
+}
+
+all_stt_names <- get_acs(geography = "state",
+                         variables = c("B06012_001E"),year=2020) %>%
+                  select(NAME) %>% .[1:51,]
+          
+
+## This line imports the data from the data set scrapped from Census
+## If you wish not to use the file, comment the line and instead uncomment the 
+## lines from 491-496. It uses the Census API to scrap the data directly, but 
+## it takes a couple of minutes.
+
+edu_dt <- import('edu-dat.csv')
+
+#cat('Fetching Data from Census (This can take a while!)...\n')
+#for (st_n in all_stt_names$NAME){
+#  edu_dt <- rbind(edu_dt, edu_dat(st_n,y = 2020))
+#  cat('=')
+#}
+#print('=>Done!')
+
+
+vls_dt <- merge(dt, edu_dt,
+                by = c('State','County','Status','Year','FIPS'),
+                suffixes = c('Pop', 'Edu'))
+vls_dt %>% 
+  filter(TotalPop>100, Status=='Foreign-Born') %>% 
+  ggplot(aes(1-Above_HS,Under_150)) +
+  geom_point(aes(size=TotalPop, alpha=TotalPop/100000, col=TotalPop)) +
+  scale_color_viridis(10) + labs(y='Low-Income Ratio', x='High-school or Less Ratio') +
+  geom_smooth(method='gam') + 
+  theme_bw() + theme(legend.position = 'none')
+
+
+### This is an extra section not knitted in the report, 
+### building a simple regression model based on the variables in the 
+### income and education data sets.
+
+data.frame(Name = state.name, Abb = state.abb) %>% 
+  filter(Abb %in% c(usmap::.northeast_region, 'CA', 'WA','VA','OR', 'HA','DC','DE','MD','IL')) %>% 
+  .[,1] -> h_state
+
+#vls_dt %>% 
+#  mutate(st = ifelse(State %in% h_state,1,0)) %>% 
+#  lm(Under_150 ~ I(1-Above_HS) + Status + st + TotalPop, data = .) %>% 
+#  summary(.)
+
+```
+
